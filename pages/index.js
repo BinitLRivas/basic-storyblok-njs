@@ -1,8 +1,122 @@
-import Head from 'next/head'
-import Image from 'next/image'
-import styles from '../styles/Home.module.css'
+import Head from "next/head";
+import Image from "next/image";
+import styles from "../styles/Home.module.css";
+import { getStoryblokApi } from "@storyblok/react";
+import { useEffect, useState } from "react";
 
-export default function Home() {
+// missing:
+// * more complex inputs
+// * css styles
+// * js custom
+// * validation
+
+export async function getStaticProps() {
+  // home is the default slug for the homepage in Storyblok
+  let slug = "home";
+
+  // load the draft version
+  let sbParams = {
+    version: "published",
+  };
+  // url - https://api.storyblok.com/v2/cdn/stories/home
+  // inputs data from CMS
+  const storyblokApi = getStoryblokApi();
+  let { data } = await storyblokApi.get(`cdn/stories/${slug}`, sbParams);
+  const body = data.story.content.body;
+  return {
+    props: {
+      data: body || false,
+      key: data ? data.story.id : false,
+    },
+    revalidate: 3600, // revalidate every hour
+  };
+}
+
+export default function Home({ data }) {
+  const [cmsDynamicForm, setCmsDynamicForm] = useState();
+  const [formData, setFormData] = useState();
+  const [formPage, setFormPage] = useState(1);
+
+  // returns an array of inputs, example
+  //     {
+  //       "_uid": "caa0e2f8-88e4-48c4-bb32-ed7471d91c14",
+  //       "name": "firstName",
+  //       "type": "text",
+  //       "label": "First Name",
+  //       "component": "form-input",
+  //       "placeholder": "First name placeholder"
+  //     }
+  //#region full example
+  //[
+  // [
+  //   ...
+  //     {
+  //       "_uid": "caa0e2f8-88e4-48c4-bb32-ed7471d91c14",
+  //       "name": "firstName",
+  //       "type": "text",
+  //       "label": "First Name",
+  //       "component": "form-input",
+  //       "placeholder": "First name placeholder"
+  //     },
+  //   ...
+  // ],
+  // [
+  //   ...
+  //     {
+  //       "_uid": "caa0e2f8-88e4-48c4-bb32-ed7471d91c14",
+  //       "name": "userEmail",
+  //       "type": "email",
+  //       "label": "Email",
+  //       "component": "form-input",
+  //       "placeholder": "Email placeholder"
+  //     },
+  //   ...
+  // ],
+  //]
+  //#endregion
+
+  const setupFormStructure = () => {
+    let us = [];
+    try {
+      for (const key in data) {
+        if (Object.hasOwnProperty.call(data, key)) {
+          const element = data[key];
+          us.push(element.fields);
+        }
+      }
+    } catch (error) {
+      console.log(error);
+    }
+
+    return us;
+  };
+
+  //
+  const navToNextPage = () => {
+    setFormPage(formPage + 1);
+    localStorage.setItem("form", JSON.stringify(formData));
+  };
+
+  const navToPrevPage = () => {
+    setFormPage(formPage - 1);
+  };
+
+  // send LS data and clear
+  const handleSubmit = () => {
+    if (localStorage.getItem("form")) {
+      alert(
+        `data to send (form local storage): ${localStorage.getItem("form")}`
+      );
+      localStorage.clear("form");
+    }
+  };
+
+  // empty effect runs once
+  useEffect(() => {
+    const formToRender = setupFormStructure();
+    setCmsDynamicForm(formToRender);
+  }, []);
+
   return (
     <div className={styles.container}>
       <Head>
@@ -15,40 +129,70 @@ export default function Home() {
         <h1 className={styles.title}>
           Welcome to <a href="https://nextjs.org">Next.js!</a>
         </h1>
-
-        <p className={styles.description}>
-          Get started by editing{' '}
-          <code className={styles.code}>pages/index.js</code>
-        </p>
-
-        <div className={styles.grid}>
-          <a href="https://nextjs.org/docs" className={styles.card}>
-            <h2>Documentation &rarr;</h2>
-            <p>Find in-depth information about Next.js features and API.</p>
-          </a>
-
-          <a href="https://nextjs.org/learn" className={styles.card}>
-            <h2>Learn &rarr;</h2>
-            <p>Learn about Next.js in an interactive course with quizzes!</p>
-          </a>
-
-          <a
-            href="https://github.com/vercel/next.js/tree/canary/examples"
-            className={styles.card}
-          >
-            <h2>Examples &rarr;</h2>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-          >
-            <h2>Deploy &rarr;</h2>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
-          </a>
+        <div>{JSON.stringify(formData)}</div>
+        <div style={{ padding: 30 }}>
+          <form className="form-section" style={{ padding: 30 }}>
+            <fieldset style={{ padding: 30 }}>
+              <legend>Form</legend>
+              <h5>Page: {formPage}</h5>
+              {cmsDynamicForm &&
+                cmsDynamicForm.map((cmsFormPage, cmsFormPageIndex) => {
+                  // to match page with cms response
+                  if (cmsFormPageIndex == formPage - 1) {
+                    return (
+                      <>
+                        {cmsFormPage.map((formInput, formInputIndex) => {
+                          return (
+                            <div key={formInputIndex}>
+                              <label key={formInputIndex}>
+                                {formInput.label}
+                              </label>
+                              {/* input based on CMS response */}
+                              <input
+                                style={{ marginBottom: 10 }}
+                                key={`input-${formInputIndex}`}
+                                type={formInput.type}
+                                id={formInput.name}
+                                name={formInput.name}
+                                placeholder={formInput.placeholder}
+                                onChange={(event) =>
+                                  setFormData({
+                                    ...formData,
+                                    [`${formInput.name}`]: event.target.value,
+                                  })
+                                }
+                                value={
+                                  formData ? formData[`${formInput.name}`] : ""
+                                }
+                              />
+                            </div>
+                          );
+                        })}
+                        <div style={{ marginTop: 10, display: "flex", justifyContent: "end  " }}>
+                          {formPage !== cmsDynamicForm.length && (
+                            <button onClick={() => navToNextPage()}>
+                              siguiente
+                            </button>
+                          )}
+                          {formPage >= cmsDynamicForm.length && (
+                            <button onClick={() => navToPrevPage()}>
+                              anterior
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    );
+                  }
+                })}
+              <button
+                // type="submit"
+                onClick={handleSubmit}
+                disabled={cmsDynamicForm && formPage != cmsDynamicForm.length}
+              >
+                Submit
+              </button>
+            </fieldset>
+          </form>
         </div>
       </main>
 
@@ -58,12 +202,12 @@ export default function Home() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          Powered by{' '}
+          Powered by{" "}
           <span className={styles.logo}>
             <Image src="/vercel.svg" alt="Vercel Logo" width={72} height={16} />
           </span>
         </a>
       </footer>
     </div>
-  )
+  );
 }
